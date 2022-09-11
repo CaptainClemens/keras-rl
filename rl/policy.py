@@ -1,10 +1,9 @@
-from __future__ import division
 import numpy as np
 
 from rl.util import *
 
 
-class Policy(object):
+class Policy:
     """Abstract base class for all implemented policies.
 
     Each policy helps with selection of action to take on an environment.
@@ -48,9 +47,9 @@ class LinearAnnealedPolicy(Policy):
     value is following a linear function decreasing over time."""
     def __init__(self, inner_policy, attr, value_max, value_min, value_test, nb_steps):
         if not hasattr(inner_policy, attr):
-            raise ValueError('Policy does not have attribute "{}".'.format(attr))
+            raise ValueError(f'Policy does not have attribute "{attr}".')
 
-        super(LinearAnnealedPolicy, self).__init__()
+        super().__init__()
 
         self.inner_policy = inner_policy
         self.attr = attr
@@ -90,7 +89,7 @@ class LinearAnnealedPolicy(Policy):
         # Returns
             List of metric names
         """
-        return ['mean_{}'.format(self.attr)]
+        return [f'mean_{self.attr}']
 
     @property
     def metrics(self):
@@ -108,7 +107,7 @@ class LinearAnnealedPolicy(Policy):
         # Returns
             Dict of config
         """
-        config = super(LinearAnnealedPolicy, self).get_config()
+        config = super().get_config()
         config['attr'] = self.attr
         config['value_max'] = self.value_max
         config['value_min'] = self.value_min
@@ -147,7 +146,7 @@ class EpsGreedyQPolicy(Policy):
     - takes current best action with prob (1 - epsilon)
     """
     def __init__(self, eps=.1):
-        super(EpsGreedyQPolicy, self).__init__()
+        super().__init__()
         self.eps = eps
 
     def select_action(self, q_values):
@@ -168,13 +167,71 @@ class EpsGreedyQPolicy(Policy):
             action = np.argmax(q_values)
         return action
 
+class DecayEpsGreedyQPolicy(Policy):
+    """Implement the epsilon greedy policy with declining epsilon
+
+    Eps Greedy policy either:
+
+    - takes a random action with probability epsilon
+    - takes current best action with prob (1 - epsilon)
+    """
+
+    def __init__(self, eps=.1, enable_epsilon_decay=False, eps_min=.01, eps_start=1.0, decay=0.0005):
+        super().__init__()
+        self.decay_flag = enable_epsilon_decay
+        self.epsilon_min = eps_min  # minimum exploration probability
+        self.epsilon_decay = decay  # exponential decay rate for exploration prob
+        if self.decay_flag:
+            self.eps = eps_start
+            self.eps_history = [self.eps]
+        else:
+            self.eps = eps
+        self.count = 0
+        self.last_episode = 1
+
+
+    def select_action(self, q_values):
+        """Return the selected action
+
+        # Arguments
+            q_values (np.ndarray): List of the estimations of Q for each action
+
+        # Returns
+            Selection action
+        """
+
+        if self.decay_flag:
+            if self.last_episode < self.agent.episode:
+                if self.eps > self.epsilon_min:
+                    self.eps *= (1 - self.epsilon_decay)
+                explore_probability = self.eps
+                self.eps_history.append(self.eps)
+            elif self.agent.episode == 1:
+                explore_probability = self.eps
+            else:
+                explore_probability = self.eps
+        else:
+            explore_probability = self.eps
+
+        assert q_values.ndim == 1
+        nb_actions = q_values.shape[0]
+
+        if np.random.uniform() < explore_probability:
+            action = np.random.randint(0, nb_actions)
+        else:
+            action = np.argmax(q_values)
+
+        self.last_episode = self.agent.episode
+
+        return action
+
     def get_config(self):
         """Return configurations of EpsGreedyQPolicy
 
         # Returns
             Dict of config
         """
-        config = super(EpsGreedyQPolicy, self).get_config()
+        config = super().get_config()
         config['eps'] = self.eps
         return config
 
@@ -205,7 +262,7 @@ class BoltzmannQPolicy(Policy):
     an action selected randomly according to this law.
     """
     def __init__(self, tau=1., clip=(-500., 500.)):
-        super(BoltzmannQPolicy, self).__init__()
+        super().__init__()
         self.tau = tau
         self.clip = clip
 
@@ -233,7 +290,7 @@ class BoltzmannQPolicy(Policy):
         # Returns
             Dict of config
         """
-        config = super(BoltzmannQPolicy, self).get_config()
+        config = super().get_config()
         config['tau'] = self.tau
         config['clip'] = self.clip
         return config
@@ -249,7 +306,7 @@ class MaxBoltzmannQPolicy(Policy):
     https://pure.uva.nl/ws/files/3153478/8461_UBA003000033.pdf
     """
     def __init__(self, eps=.1, tau=1., clip=(-500., 500.)):
-        super(MaxBoltzmannQPolicy, self).__init__()
+        super().__init__()
         self.eps = eps
         self.tau = tau
         self.clip = clip
@@ -283,7 +340,7 @@ class MaxBoltzmannQPolicy(Policy):
         # Returns
             Dict of config
         """
-        config = super(MaxBoltzmannQPolicy, self).get_config()
+        config = super().get_config()
         config['eps'] = self.eps
         config['tau'] = self.tau
         config['clip'] = self.clip
@@ -307,7 +364,7 @@ class BoltzmannGumbelQPolicy(Policy):
 
     def __init__(self, C=1.0):
         assert C > 0, "BoltzmannGumbelQPolicy C parameter must be > 0, not " + repr(C)
-        super(BoltzmannGumbelQPolicy, self).__init__()
+        super().__init__()
         self.C = C
         self.action_counts = None
 
@@ -351,6 +408,6 @@ class BoltzmannGumbelQPolicy(Policy):
         # Returns
             Dict of config
         """
-        config = super(BoltzmannGumbelQPolicy, self).get_config()
+        config = super().get_config()
         config['C'] = self.C
         return config
