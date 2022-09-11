@@ -1,21 +1,19 @@
-# -*- coding: utf-8 -*-
 import warnings
 from copy import deepcopy
 
 import numpy as np
-from keras.callbacks import History
+from tensorflow.keras.callbacks import History
 
 from rl.callbacks import (
     CallbackList,
     TestLogger,
     TrainEpisodeLogger,
     TrainIntervalLogger,
-    Visualizer,
-    WandbLogger
+    Visualizer
 )
 
 
-class Agent(object):
+class Agent:
     """Abstract base class for all implemented agents.
 
     Each agent interacts with the environment (as defined by the `Env` class) by first observing the
@@ -38,11 +36,11 @@ class Agent(object):
     # Arguments
         processor (`Processor` instance): See [Processor](#processor) for details.
     """
-
     def __init__(self, processor=None):
         self.processor = processor
         self.training = False
         self.step = 0
+        self.episode = 1
 
     def get_config(self):
         """Configuration of the agent for serialization.
@@ -84,11 +82,9 @@ class Agent(object):
             A `keras.callbacks.History` instance that recorded the entire training process.
         """
         if not self.compiled:
-            raise RuntimeError(
-                'Your tried to fit your agent but it hasn\'t been compiled yet. Please call `compile()` before `fit()`.')
+            raise RuntimeError('Your tried to fit your agent but it hasn\'t been compiled yet. Please call `compile()` before `fit()`.')
         if action_repetition < 1:
-            raise ValueError(
-                'action_repetition must be >= 1, is {}'.format(action_repetition))
+            raise ValueError(f'action_repetition must be >= 1, is {action_repetition}')
 
         self.training = True
 
@@ -135,14 +131,12 @@ class Agent(object):
                     self.reset_states()
                     observation = deepcopy(env.reset())
                     if self.processor is not None:
-                        observation = self.processor.process_observation(
-                            observation)
+                        observation = self.processor.process_observation(observation)
                     assert observation is not None
 
                     # Perform random starts at beginning of episode and do not record them into the experience.
                     # This slightly changes the start position between games.
-                    nb_random_start_steps = 0 if nb_max_start_steps == 0 else np.random.randint(
-                        nb_max_start_steps)
+                    nb_random_start_steps = 0 if nb_max_start_steps == 0 else np.random.randint(nb_max_start_steps)
                     for _ in range(nb_random_start_steps):
                         if start_step_policy is None:
                             action = env.action_space.sample()
@@ -154,16 +148,13 @@ class Agent(object):
                         observation, reward, done, info = env.step(action)
                         observation = deepcopy(observation)
                         if self.processor is not None:
-                            observation, reward, done, info = self.processor.process_step(
-                                observation, reward, done, info)
+                            observation, reward, done, info = self.processor.process_step(observation, reward, done, info)
                         callbacks.on_action_end(action)
                         if done:
-                            warnings.warn('Env ended before {} random steps could be performed at the start. You should probably lower the `nb_max_start_steps` parameter.'.format(
-                                nb_random_start_steps))
+                            warnings.warn(f'Env ended before {nb_random_start_steps} random steps could be performed at the start. You should probably lower the `nb_max_start_steps` parameter.')
                             observation = deepcopy(env.reset())
                             if self.processor is not None:
-                                observation = self.processor.process_observation(
-                                    observation)
+                                observation = self.processor.process_observation(observation)
                             break
 
                 # At this point, we expect to be fully initialized.
@@ -186,8 +177,7 @@ class Agent(object):
                     observation, r, done, info = env.step(action)
                     observation = deepcopy(observation)
                     if self.processor is not None:
-                        observation, r, done, info = self.processor.process_step(
-                            observation, r, done, info)
+                        observation, r, done, info = self.processor.process_step(observation, r, done, info)
                     for key, value in info.items():
                         if not np.isreal(value):
                             continue
@@ -234,6 +224,7 @@ class Agent(object):
                     callbacks.on_episode_end(episode, episode_logs)
 
                     episode += 1
+                    self.episode = episode
                     observation = None
                     episode_step = None
                     episode_reward = None
@@ -278,11 +269,9 @@ class Agent(object):
             A `keras.callbacks.History` instance that recorded the entire training process.
         """
         if not self.compiled:
-            raise RuntimeError(
-                'Your tried to test your agent but it hasn\'t been compiled yet. Please call `compile()` before `test()`.')
+            raise RuntimeError('Your tried to test your agent but it hasn\'t been compiled yet. Please call `compile()` before `test()`.')
         if action_repetition < 1:
-            raise ValueError(
-                'action_repetition must be >= 1, is {}'.format(action_repetition))
+            raise ValueError(f'action_repetition must be >= 1, is {action_repetition}')
 
         self.training = False
         self.step = 0
@@ -325,8 +314,7 @@ class Agent(object):
 
             # Perform random starts at beginning of episode and do not record them into the experience.
             # This slightly changes the start position between games.
-            nb_random_start_steps = 0 if nb_max_start_steps == 0 else np.random.randint(
-                nb_max_start_steps)
+            nb_random_start_steps = 0 if nb_max_start_steps == 0 else np.random.randint(nb_max_start_steps)
             for _ in range(nb_random_start_steps):
                 if start_step_policy is None:
                     action = env.action_space.sample()
@@ -338,16 +326,13 @@ class Agent(object):
                 observation, r, done, info = env.step(action)
                 observation = deepcopy(observation)
                 if self.processor is not None:
-                    observation, r, done, info = self.processor.process_step(
-                        observation, r, done, info)
+                    observation, r, done, info = self.processor.process_step(observation, r, done, info)
                 callbacks.on_action_end(action)
                 if done:
-                    warnings.warn('Env ended before {} random steps could be performed at the start. You should probably lower the `nb_max_start_steps` parameter.'.format(
-                        nb_random_start_steps))
+                    warnings.warn(f'Env ended before {nb_random_start_steps} random steps could be performed at the start. You should probably lower the `nb_max_start_steps` parameter.')
                     observation = deepcopy(env.reset())
                     if self.processor is not None:
-                        observation = self.processor.process_observation(
-                            observation)
+                        observation = self.processor.process_observation(observation)
                     break
 
             # Run the episode until we're done.
@@ -365,8 +350,7 @@ class Agent(object):
                     observation, r, d, info = env.step(action)
                     observation = deepcopy(observation)
                     if self.processor is not None:
-                        observation, r, d, info = self.processor.process_step(
-                            observation, r, d, info)
+                        observation, r, d, info = self.processor.process_step(observation, r, d, info)
                     callbacks.on_action_end(action)
                     reward += r
                     for key, value in info.items():
@@ -393,6 +377,7 @@ class Agent(object):
                 callbacks.on_step_end(episode_step, step_logs)
                 episode_step += 1
                 self.step += 1
+
 
             # We are in a terminal state but the agent hasn't yet seen it. We therefore
             # perform one more forward-backward call and simply ignore the action before
@@ -512,7 +497,7 @@ class Agent(object):
         pass
 
 
-class Processor(object):
+class Processor:
     """Abstract base class for implementing processors.
 
     A processor acts as a coupling mechanism between an `Agent` and its `Env`. This can
@@ -621,7 +606,7 @@ class Processor(object):
 # https://github.com/openai/gym/blob/master/gym/core.py
 
 
-class Env(object):
+class Env:
     """The abstract environment class that is used by all agents. This class has the exact
     same API that OpenAI Gym uses so that integrating with it is trivial. In contrast to the
     OpenAI Gym implementation, this class only defines the abstract methods without any actual
@@ -703,10 +688,10 @@ class Env(object):
         self.close()
 
     def __str__(self):
-        return '<{} instance>'.format(type(self).__name__)
+        return f'<{type(self).__name__} instance>'
 
 
-class Space(object):
+class Space:
     """Abstract model for a space that is used for the state and action spaces. This class has the
     exact same API that OpenAI Gym uses so that integrating with it is trivial.
 
