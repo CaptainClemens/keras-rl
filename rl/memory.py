@@ -1,7 +1,7 @@
-from __future__ import absolute_import
 from collections import deque, namedtuple
 import warnings
 import random
+import copy
 
 import numpy as np
 
@@ -27,10 +27,8 @@ def sample_batch_indexes(low, high, size):
         # batch. We cannot use `np.random.choice` here because it is horribly inefficient as
         # the memory grows. See https://github.com/numpy/numpy/issues/2764 for a discussion.
         # `random.sample` does the same thing (drawing without replacement) and is way faster.
-        try:
-            r = xrange(low, high)
-        except NameError:
-            r = range(low, high)
+
+        r = range(low, high)
         batch_idxs = random.sample(r, size)
     else:
         # Not enough data. Help ourselves with sampling from the range, but the same index
@@ -42,58 +40,24 @@ def sample_batch_indexes(low, high, size):
     return batch_idxs
 
 
-class RingBuffer(object):
-    def __init__(self, maxlen):
-        self.maxlen = maxlen
-        self.data = deque(maxlen=maxlen)
-
-    def __len__(self):
-        return self.length()
-
-    def __getitem__(self, idx):
-        """Return element of buffer at specific index
-
-        # Argument
-            idx (int): Index wanted
-
-        # Returns
-            The element of buffer at given index
-        """
-        if idx < 0 or idx >= self.length():
-            raise KeyError()
-        return self.data[idx]
-
-    def append(self, v):
-        """Append an element to the buffer
-
-        # Argument
-            v (object): Element to append
-        """
-        self.data.append(v)
-
-    def length(self):
-        """Return the length of Deque
-
-        # Argument
-            None
-
-        # Returns
-            The lenght of deque element
-        """
-        return len(self.data)
-
 def zeroed_observation(observation):
     """Return an array of zeros with same shape as given observation
-
     # Argument
         observation (list): List of observation
-    
+
     # Return
         A np.ndarray of zeros with observation.shape
     """
     if hasattr(observation, 'shape'):
         return np.zeros(observation.shape)
+    if isinstance(observation, dict):
+        keys = observation.keys()
+        obs = dict()
+        for key in keys:
+            obs[key] = np.zeros(observation[key].shape)
+        return obs
     elif hasattr(observation, '__iter__'):
+
         out = []
         for x in observation:
             out.append(zeroed_observation(x))
@@ -102,7 +66,7 @@ def zeroed_observation(observation):
         return 0.
 
 
-class Memory(object):
+class Memory:
     def __init__(self, window_length, ignore_episode_boundaries=False):
         self.window_length = window_length
         self.ignore_episode_boundaries = ignore_episode_boundaries
@@ -157,16 +121,16 @@ class Memory(object):
 
 class SequentialMemory(Memory):
     def __init__(self, limit, **kwargs):
-        super(SequentialMemory, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         
         self.limit = limit
 
         # Do not use deque to implement the memory. This data structure may seem convenient but
         # it is way too slow on random access. Instead, we use our own ring buffer implementation.
-        self.actions = RingBuffer(limit)
-        self.rewards = RingBuffer(limit)
-        self.terminals = RingBuffer(limit)
-        self.observations = RingBuffer(limit)
+        self.actions = deque(maxlen=limit)
+        self.rewards = deque(maxlen=limit)
+        self.terminals = deque(maxlen=limit)
+        self.observations = deque(maxlen=limit)
 
     def sample(self, batch_size, batch_idxs=None):
         """Return a randomized batch of experiences
@@ -228,7 +192,7 @@ class SequentialMemory(Memory):
             # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
             # to the right. Again, we need to be careful to not include an observation from the next
             # episode if the last state is terminal.
-            state1 = [np.copy(x) for x in state0[1:]]
+            state1 = [copy.deepcopy(x) for x in state0[1:]]
             state1.append(self.observations[idx])
 
             assert len(state0) == self.window_length
@@ -247,7 +211,7 @@ class SequentialMemory(Memory):
             reward (float): Reward obtained by taking this action
             terminal (boolean): Is the state terminal
         """ 
-        super(SequentialMemory, self).append(observation, action, reward, terminal, training=training)
+        super().append(observation, action, reward, terminal, training=training)
         
         # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
         # and weather the next state is `terminal` or not.
@@ -272,19 +236,19 @@ class SequentialMemory(Memory):
         # Returns
             Dict of config
         """
-        config = super(SequentialMemory, self).get_config()
+        config = super().get_config()
         config['limit'] = self.limit
         return config
 
 
 class EpisodeParameterMemory(Memory):
     def __init__(self, limit, **kwargs):
-        super(EpisodeParameterMemory, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.limit = limit
 
-        self.params = RingBuffer(limit)
+        self.params = deque(maxlen=limit)
         self.intermediate_rewards = []
-        self.total_rewards = RingBuffer(limit)
+        self.total_rewards = deque(maxlen=limit)
 
     def sample(self, batch_size, batch_idxs=None):
         """Return a randomized batch of params and rewards
@@ -315,7 +279,7 @@ class EpisodeParameterMemory(Memory):
             reward (float): Reward obtained by taking this action
             terminal (boolean): Is the state terminal
         """
-        super(EpisodeParameterMemory, self).append(observation, action, reward, terminal, training=training)
+        super().append(observation, action, reward, terminal, training=training)
         if training:
             self.intermediate_rewards.append(reward)
 
